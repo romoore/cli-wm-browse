@@ -21,8 +21,15 @@ package com.owlplatorm.wmbrowse.cli;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.util.Collection;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.owlplatform.worldmodel.Attribute;
 import com.owlplatform.worldmodel.client.ClientWorldConnection;
+import com.owlplatform.worldmodel.client.Response;
+import com.owlplatform.worldmodel.client.WorldState;
 import com.owlplatform.worldmodel.solver.SolverWorldConnection;
 
 /**
@@ -32,6 +39,11 @@ import com.owlplatform.worldmodel.solver.SolverWorldConnection;
  * 
  */
 public class Browser extends Thread {
+
+  /**
+   * Logger for this class.
+   */
+  private static final Logger log = LoggerFactory.getLogger(Browser.class);
 
   /**
    * Title for this app.
@@ -50,9 +62,9 @@ public class Browser extends Thread {
       + " version "
       + VERSION
       + "\n"
-      + "Signal Visualization tools for the Owl Platform.\n\n"
+      + "World Model command line tools for the Owl Platform.\n\n"
       + "Copyright (C) 2012 Robert Moore and the Owl Platform\n"
-      + "SigVis comes with ABSOLUTELY NO WARRANTY.\n"
+      + TITLE + " comes with ABSOLUTELY NO WARRANTY.\n"
       + "This is free software, and you are welcome to redistribute it\n"
       + "under certain conditions; see the included file LICENSE for details.\n";
 
@@ -79,11 +91,17 @@ public class Browser extends Thread {
   public static final String CMD_SEARCH = "search";
 
   /**
+   * Command to retrieve a current snapshot of a Identifer regular expression.
+   */
+  public static final String CMD_STATUS = "status";
+
+  /**
    * Message to print that contains all commands and brief descriptions.
    */
   public static final String HELP_MSG = "Command - Usage\n"
       + "help - Print this information\n"
-      + "search ID_REGEX - Search for Identifiers using a regular expression"
+      + "search ID_REGEX - Search for Identifiers using a regular expression\n"
+      + "status ID_REGEX - Current status for Identifiers using a regular expression\n"
       + "quit - Exit the application\n" + "exit - Exit the application";
 
   /**
@@ -101,11 +119,11 @@ public class Browser extends Thread {
   public static void main(String[] args) {
     System.out.println(ABOUT_TXT);
     if (args.length < 1) {
-      System.err.println("Missing world model hostname/IP address.");
+      System.out.println("Missing world model hostname/IP address.");
       return;
     }
     if (args.length < 2) {
-      System.err.println("Missing origin string.");
+      System.out.println("Missing origin string.");
       return;
     }
 
@@ -198,14 +216,14 @@ public class Browser extends Thread {
     }
 
     this.hostString = wmHost;
-    this.currentPrompt = this.hostString + PROMPT;
+    this.currentPrompt = "[" + origin + "@" + this.hostString + "]" + PROMPT;
 
     this.userIn = new BufferedReader(new InputStreamReader(System.in));
   }
 
   @Override
   public void run() {
-    
+
     // Client connection
     System.out.print("[Connecting to " + this.cwc + ".");
     if (!this.cwc.connect(10000)) {
@@ -221,23 +239,22 @@ public class Browser extends Thread {
       }
       System.out.print('.');
     }
-    if(waitingTimes >= 20){
+    if (waitingTimes >= 20) {
       System.out.println("FAIL]");
       this.cwc.disconnect();
       return;
     }
     System.out.println("OK]");
-    
+
     // Solver connection
-    
-    
+
     System.out.print("[Connecting to " + this.swc + ".");
     if (!this.swc.connect(10000)) {
       System.out.println("FAIL]");
       return;
     }
     waitingTimes = 0;
-    while(!this.swc.isConnectionLive() && waitingTimes++ < 20){
+    while (!this.swc.isConnectionLive() && waitingTimes++ < 20) {
       try {
         Thread.sleep(500);
       } catch (InterruptedException ie) {
@@ -245,12 +262,12 @@ public class Browser extends Thread {
       }
       System.out.print('.');
     }
-    if(waitingTimes >= 20){
+    if (waitingTimes >= 20) {
       System.out.println("FAIL]");
       this.swc.disconnect();
       return;
     }
-    
+
     System.out.println("OK]");
     System.out.println();
     System.out.print(this.currentPrompt);
@@ -263,12 +280,19 @@ public class Browser extends Thread {
           // Ignored
         }
       } else if (this.keepRunning) {
-        System.out.println();
         System.out.print(this.currentPrompt);
       }
 
     }
 
+    this.shutdown();
+  }
+
+  /**
+   * Shuts down the world model connections. Cleans-up any remaining threads,
+   * objects, etc.
+   */
+  protected void shutdown() {
     this.cwc.disconnect();
     this.swc.disconnect();
 
@@ -287,13 +311,18 @@ public class Browser extends Thread {
       if (System.in.available() > 0) {
 
         String line = this.userIn.readLine().trim();
+        if(line.length() == 0){
+          return true;
+        }
 
         this.handleCommand(line);
         return true;
       }
-    } catch (IOException e) {
-      System.err.println("An error has occurred: " + e);
-      e.printStackTrace();
+    } catch (Throwable e) {
+      System.out
+          .println("An error has occurred. See the log for more information.");
+      log.error("An unhandled exception occurred.", e);
+      this.keepRunning = false;
     }
     return false;
   }
@@ -308,11 +337,13 @@ public class Browser extends Thread {
   protected void handleCommand(final String command) {
     if (CMD_EXIT.equalsIgnoreCase(command)
         || CMD_QUIT.equalsIgnoreCase(command)) {
-      this.shutdown();
+      this.stopRunning();
     } else if (CMD_HELP.equalsIgnoreCase(command)) {
       this.getHelp();
     } else if (command.startsWith(CMD_SEARCH)) {
       this.performIdSearch(command);
+    } else if (command.startsWith(CMD_STATUS)) {
+      this.currentStatus(command);
     } else {
       System.out.println("Command not found \"" + command
           + "\".\nType \"help\" for a list of commands.");
@@ -323,7 +354,7 @@ public class Browser extends Thread {
    * Terminates the application. Performs any necessary clean-up before the
    * connections are terminated.
    */
-  protected void shutdown() {
+  protected void stopRunning() {
     this.keepRunning = false;
   }
 
@@ -338,25 +369,25 @@ public class Browser extends Thread {
    * Searches for matching Identifier values given a regular expression
    * 
    * @param command
+   *          the full command provided by the user.
    */
   protected void performIdSearch(final String command) {
-    // Extract the regular expression from the command line
-    int startCmd = command.indexOf(CMD_SEARCH);
-    if (startCmd == -1 || command.length() <= (CMD_SEARCH.length() + 1)) {
-      System.out.println("Missing regular expression. Unable to search.");
+    String regex = removeCommand(CMD_SEARCH, command);
+    if (regex == null) {
+      System.out
+          .println("Empty regular expression. Unable to retrieve status.");
       return;
     }
-    // Grab the string from the end of the command +1 (space)
-    String regex = command.substring(startCmd + CMD_SEARCH.length() + 1);
+
     if (regex.startsWith("\"") && regex.endsWith("\"") && regex.length() > 1) {
       regex = regex.substring(1, regex.length() - 1);
     }
 
-    if(regex.length() == 0){
+    if (regex == null) {
       System.out.println("Empty regular expression. Unable to search.");
       return;
     }
-    
+
     System.out.println("Searching Identifiers for \"" + regex + "\"...");
     String[] matched = this.cwc.searchId(regex);
     if (matched == null || matched.length == 0) {
@@ -366,6 +397,85 @@ public class Browser extends Thread {
 
     for (String id : matched) {
       System.out.println("+ " + id);
+    }
+
+  }
+
+  /**
+   * Removes the String {@code command} from the String {@code source},
+   * returning the remainder of {@code source} if there is anything left.
+   * 
+   * @param command
+   *          the command to remove.
+   * @param source
+   *          the string to remove {@code command} from.
+   * @return the remainder of {@code source} after {@code command} has been
+   *         removed, or {@code null} if an error occurred.
+   */
+  protected static String removeCommand(final String command,
+      final String source) {
+    try {
+      // Extract the regular expression from the command line
+      int startCmd = source.indexOf(command);
+      if (startCmd == -1 || source.length() <= (command.length() + 1)) {
+        return null;
+      }
+      // Grab the string from the end of the command +1 (space)
+      String remainder = source.substring(startCmd + command.length() + 1);
+      if (remainder.length() == 0) {
+        return null;
+      }
+      return remainder;
+    } catch (Exception e) {
+      System.out
+          .println("An exception occurred while parsing the command.  See the log for details.");
+      log.error("Exception while removing a command (" + command + "/" + source
+          + ").", e);
+      return null;
+    }
+
+  }
+
+  /**
+   * Sends a snapshot request to the world model for the current state of the
+   * Identifiers in a regular expression provided
+   * 
+   * @param command
+   *          the full command provided by the user.
+   */
+  protected void currentStatus(final String command) {
+    String idRegex = removeCommand(CMD_STATUS, command);
+    if (idRegex == null) {
+      System.out
+          .println("Empty regular expression. Unable to retrieve status.");
+      return;
+    }
+
+    System.out.println("Retrieving current status for \"" + idRegex + "\"...");
+    try {
+      WorldState state = this.cwc.getCurrentSnapshot(idRegex, ".*").get();
+      if (state == null) {
+        System.out.println("[No status available.]");
+        return;
+      }
+      for (String id : state.getIdentifiers()) {
+        System.out.println("+ " + id);
+        Collection<Attribute> attribs = state.getState(id);
+        if (attribs == null || attribs.isEmpty()) {
+          System.out.println("  [NO DATA]");
+          continue;
+        }
+        for (Attribute a : attribs) {
+          System.out.println(" - " + a);
+        }
+      }
+
+    } catch (Exception e) {
+      System.out
+          .println("Unable to retrieve current status. See the log for more details.");
+      log.error("Unable to retrieve current snapshot for \"" + idRegex + "\".",
+          e);
+      return;
     }
 
   }

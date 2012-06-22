@@ -7,3 +7,7 @@ target
 .classpath
 .settings
 .project
+
+# Logs
+*.log
+logs
