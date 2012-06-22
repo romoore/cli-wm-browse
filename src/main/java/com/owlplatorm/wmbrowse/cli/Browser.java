@@ -19,7 +19,6 @@
 package com.owlplatorm.wmbrowse.cli;
 
 import java.io.BufferedReader;
-import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.Collection;
 
@@ -28,7 +27,7 @@ import org.slf4j.LoggerFactory;
 
 import com.owlplatform.worldmodel.Attribute;
 import com.owlplatform.worldmodel.client.ClientWorldConnection;
-import com.owlplatform.worldmodel.client.Response;
+import com.owlplatform.worldmodel.client.StepResponse;
 import com.owlplatform.worldmodel.client.WorldState;
 import com.owlplatform.worldmodel.solver.SolverWorldConnection;
 
@@ -64,7 +63,8 @@ public class Browser extends Thread {
       + "\n"
       + "World Model command line tools for the Owl Platform.\n\n"
       + "Copyright (C) 2012 Robert Moore and the Owl Platform\n"
-      + TITLE + " comes with ABSOLUTELY NO WARRANTY.\n"
+      + TITLE
+      + " comes with ABSOLUTELY NO WARRANTY.\n"
       + "This is free software, and you are welcome to redistribute it\n"
       + "under certain conditions; see the included file LICENSE for details.\n";
 
@@ -96,12 +96,24 @@ public class Browser extends Thread {
   public static final String CMD_STATUS = "status";
 
   /**
+   * Command to retrieve a history of an Identifier regular expression.
+   */
+  public static final String CMD_HISTORY = "history";
+
+  /**
+   * Command to create a new Identifier value in the world model.
+   */
+  public static final String CMD_CREATE_ID = "create";
+
+  /**
    * Message to print that contains all commands and brief descriptions.
    */
   public static final String HELP_MSG = "Command - Usage\n"
       + "help - Print this information\n"
       + "search ID_REGEX - Search for Identifiers using a regular expression\n"
       + "status ID_REGEX - Current status for Identifiers using a regular expression\n"
+      + "history ID_REGEX - Entire history for Identifiers using a regular expression\n"
+      + "create ID - Create a new Identifier in the world model\n"
       + "quit - Exit the application\n" + "exit - Exit the application";
 
   /**
@@ -311,7 +323,7 @@ public class Browser extends Thread {
       if (System.in.available() > 0) {
 
         String line = this.userIn.readLine().trim();
-        if(line.length() == 0){
+        if (line.length() == 0) {
           return true;
         }
 
@@ -335,6 +347,9 @@ public class Browser extends Thread {
    *          the user command
    */
   protected void handleCommand(final String command) {
+    if (command == null) {
+      return;
+    }
     if (CMD_EXIT.equalsIgnoreCase(command)
         || CMD_QUIT.equalsIgnoreCase(command)) {
       this.stopRunning();
@@ -344,6 +359,10 @@ public class Browser extends Thread {
       this.performIdSearch(command);
     } else if (command.startsWith(CMD_STATUS)) {
       this.currentStatus(command);
+    } else if (command.startsWith(CMD_HISTORY)) {
+      this.history(command);
+    } else if (command.startsWith(CMD_CREATE_ID)) {
+      this.createId(command);
     } else {
       System.out.println("Command not found \"" + command
           + "\".\nType \"help\" for a list of commands.");
@@ -458,17 +477,7 @@ public class Browser extends Thread {
         System.out.println("[No status available.]");
         return;
       }
-      for (String id : state.getIdentifiers()) {
-        System.out.println("+ " + id);
-        Collection<Attribute> attribs = state.getState(id);
-        if (attribs == null || attribs.isEmpty()) {
-          System.out.println("  [NO DATA]");
-          continue;
-        }
-        for (Attribute a : attribs) {
-          System.out.println(" - " + a);
-        }
-      }
+      this.printState(state);
 
     } catch (Exception e) {
       System.out
@@ -478,5 +487,104 @@ public class Browser extends Thread {
       return;
     }
 
+  }
+
+  /**
+   * Requests the complete history of the Identifiers matched in the regular
+   * expression provided in the command.
+   * 
+   * @param command
+   *          the full command provided by the user.
+   */
+  protected void history(final String command) {
+    String idRegex = removeCommand(CMD_HISTORY, command);
+    if (idRegex == null) {
+      System.out
+          .println("Empty regular expression. Unable to retrieve status.");
+      return;
+    }
+
+    System.out.println("Retrieving historic information for \"" + idRegex
+        + "\".\nThis may take some time..");
+    try {
+      StepResponse responses = this.cwc.getRangeRequest(idRegex, 0,
+          System.currentTimeMillis(), ".*");
+
+      if (responses == null) {
+        System.out.println("[No history available.]");
+        return;
+      }
+
+      // Keep going while there is data OR the data is incomplete
+      while (responses.hasNext() || !responses.isComplete()) {
+        if (responses.isError()) {
+          System.out
+              .println("An error occurred. Please see the log for details.");
+          log.error("Error while retrieving range response.",
+              responses.getError());
+          return;
+        }
+        /*
+         * Get the next available state. If complete, should return immediately,
+         * else may block until data arrives. Can throw an exception if
+         * something happens while waiting.
+         */
+
+        WorldState state = responses.next();
+        System.out.println("==========");
+        this.printState(state);
+      }
+    } catch (Exception e) {
+      System.out
+          .println("Unable to some or all historic status information. See the log for more details.");
+      log.error("Unable to retrieve full history for \"" + idRegex + "\".", e);
+      return;
+    }
+  }
+ 
+  /**
+   * Creates a new Identifier value in the world model.
+   *  @param command
+   *          the full command provided by the user.
+   */
+  protected void createId(final String command){
+    String identifier = removeCommand(CMD_CREATE_ID, command);
+    if (identifier == null) {
+      System.out
+          .println("Empty Identifier. Unable to create.");
+      return;
+    }
+    
+    if(this.swc.createId(identifier)){
+      System.out.println("Create \"" + identifier + "\" command was sent.");
+      try {
+        this.printState(this.cwc.getSnapshot(identifier, 0, 0, "creation").get());
+      }catch(Exception e){
+        log.error("Unable to retrieve state after creating \"" + identifier + "\".",e);
+      }
+    }else{
+      System.out.println("Unable to create \"" + identifier + "\" in the world model.");
+    }
+  }
+  
+  /**
+   * Prints a WorldState object to System.out.
+   * @param state the state to print.
+   */
+  protected void printState(final WorldState state){
+    if(state == null){
+      System.out.println("+ [NO DATA]");
+    }
+    for (String id : state.getIdentifiers()) {
+      System.out.println("+ " + id);
+      Collection<Attribute> attribs = state.getState(id);
+      if (attribs == null || attribs.isEmpty()) {
+        System.out.println("  [NO DATA]");
+        continue;
+      }
+      for (Attribute a : attribs) {
+        System.out.println(" - " + a);
+      }
+    }
   }
 }
