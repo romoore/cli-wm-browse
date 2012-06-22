@@ -13,7 +13,7 @@
 
     <!--  Rolling file appender which breaks up the log into 10MB files  -->
 	<appender name="rollingFile" class="org.apache.log4j.RollingFileAppender">
-		<param name="File" value="logs/sigvis-debug.log" />
+		<param name="File" value="logs/browser.log" />
 		<param name="MaxFileSize" value="10MB" />
 		<!-- Keep at most 100MB of logs -->
 		<param name="MaxBackupIndex" value="10" />
@@ -37,9 +37,6 @@
 	<!--  Control logging verbosity for a specific package or class -->
 	
   <logger name="com.owlplatform">
-    <level value="warn" />
-  </logger>
-	<logger name="com.owlplatform.worldmodel">
     <level value="debug" />
   </logger>
   <logger name="org.apache">
@@ -48,7 +45,7 @@
 
 	<root>
 		<priority value="debug" />
-    	<appender-ref ref="console" />
+    	<appender-ref ref="rollingFile" />
     <!--
     <appender-ref ref="dailyRollingFile" />
 		<appender-ref ref="rollingFile" />

@@ -55,7 +55,7 @@ public class Browser extends Thread {
       + "SigVis comes with ABSOLUTELY NO WARRANTY.\n"
       + "This is free software, and you are welcome to redistribute it\n"
       + "under certain conditions; see the included file LICENSE for details.\n";
-  
+
   /**
    * User prompt.
    */
@@ -72,24 +72,28 @@ public class Browser extends Thread {
    * Command to print help information.
    */
   public static final String CMD_HELP = "help";
-  
+
+  /**
+   * Command to search Identifiers with a regular expression.
+   */
+  public static final String CMD_SEARCH = "search";
+
   /**
    * Message to print that contains all commands and brief descriptions.
    */
-  public static final String HELP_MSG = 
-      "Command - Usage\n"+
-      "help - Print this information\n"+
-      "quit - Exit the application\n"+
-      "exit - Exit the application\n";
-  
+  public static final String HELP_MSG = "Command - Usage\n"
+      + "help - Print this information\n"
+      + "search ID_REGEX - Search for Identifiers using a regular expression"
+      + "quit - Exit the application\n" + "exit - Exit the application";
 
   /**
-   * Expects a server hostname/IP. Optionally provides the solver and client
-   * port numbers, respectively.
+   * Expects a server hostname/IP and origin value. Optionally provides the
+   * solver and client port numbers, respectively.
    * 
    * @param args
    *          <ol>
    *          <li>hostname/IP address</li>
+   *          <li>origin</li>
    *          <li>(<em>Optional</em>) solver port</li>
    *          <li>(<em>Optional</em>) client port</li>
    *          </ol>
@@ -100,34 +104,39 @@ public class Browser extends Thread {
       System.err.println("Missing world model hostname/IP address.");
       return;
     }
+    if (args.length < 2) {
+      System.err.println("Missing origin string.");
+      return;
+    }
 
     String wmHost = args[0];
+    String origin = args[1];
     int solverPort = -1;
     int clientPort = -1;
-    if (args.length > 1) {
+    if (args.length > 2) {
       try {
-        solverPort = Integer.parseInt(args[1]);
+        solverPort = Integer.parseInt(args[2]);
         if (solverPort > 65535) {
-          System.err.println("Port number must be in the range [0,65535]");
+          System.out.println("Port number must be in the range [0,65535]");
           solverPort = -1;
         }
       } catch (NumberFormatException nfe) {
-        System.err.println("Unable to parse " + args[1] + " as a port number.");
+        System.out.println("Unable to parse " + args[2] + " as a port number.");
       }
     }
-    if (args.length > 2) {
+    if (args.length > 3) {
       try {
-        clientPort = Integer.parseInt(args[2]);
+        clientPort = Integer.parseInt(args[3]);
         if (clientPort > 65535) {
-          System.err.println("Port number must be in the range [0,65535]");
+          System.out.println("Port number must be in the range [0,65535]");
           clientPort = -1;
         }
       } catch (NumberFormatException nfe) {
-        System.err.println("Unable to parse " + args[2] + " as a port number.");
+        System.out.println("Unable to parse " + args[3] + " as a port number.");
       }
     }
 
-    Browser b = new Browser(wmHost, solverPort, clientPort);
+    Browser b = new Browser(wmHost, origin, solverPort, clientPort);
     b.start();
   }
 
@@ -145,11 +154,21 @@ public class Browser extends Thread {
    * Flag to keep running the main application loop.
    */
   private boolean keepRunning = true;
-  
+
   /**
    * Input stream for user commands.
    */
   private BufferedReader userIn;
+
+  /**
+   * The host name/IP address of the world model.
+   */
+  private final String hostString;
+
+  /**
+   * The current prompt shown to the user.
+   */
+  private String currentPrompt = PROMPT;
 
   /**
    * Constructs a new Browser object using the hostname, solver port, and client
@@ -158,36 +177,83 @@ public class Browser extends Thread {
    * 
    * @param wmHost
    *          the hostname or IP address of the world model
+   * @param origin
+   *          the origin string for Identifiers and Attributes sent to the world
+   *          model
    * @param solverPort
    *          the alternate solver port number
    * @param clientPort
    *          the alternate client port number
    */
-  public Browser(final String wmHost, final int solverPort, final int clientPort) {
+  public Browser(final String wmHost, final String origin,
+      final int solverPort, final int clientPort) {
     this.cwc.setHost(wmHost);
     this.swc.setHost(wmHost);
+    this.swc.setOriginString(origin);
     if (solverPort >= 0) {
       this.swc.setPort(solverPort);
     }
     if (clientPort >= 0) {
       this.cwc.setPort(clientPort);
     }
-    
+
+    this.hostString = wmHost;
+    this.currentPrompt = this.hostString + PROMPT;
+
     this.userIn = new BufferedReader(new InputStreamReader(System.in));
   }
 
   @Override
   public void run() {
+    
+    // Client connection
+    System.out.print("[Connecting to " + this.cwc + ".");
     if (!this.cwc.connect(10000)) {
-      System.err.println("Unable to connect to " + this.cwc + ". Exiting.");
+      System.out.println("FAIL]");
       return;
     }
+    int waitingTimes = 0;
+    while (!this.cwc.isConnected() && waitingTimes++ < 20) {
+      try {
+        Thread.sleep(500);
+      } catch (InterruptedException ie) {
+        // Ignored
+      }
+      System.out.print('.');
+    }
+    if(waitingTimes >= 20){
+      System.out.println("FAIL]");
+      this.cwc.disconnect();
+      return;
+    }
+    System.out.println("OK]");
+    
+    // Solver connection
+    
+    
+    System.out.print("[Connecting to " + this.swc + ".");
     if (!this.swc.connect(10000)) {
-      System.err.println("Unable to connect to " + this.swc + ". Exiting.");
+      System.out.println("FAIL]");
       return;
     }
+    waitingTimes = 0;
+    while(!this.swc.isConnectionLive() && waitingTimes++ < 20){
+      try {
+        Thread.sleep(500);
+      } catch (InterruptedException ie) {
+        // Ignored
+      }
+      System.out.print('.');
+    }
+    if(waitingTimes >= 20){
+      System.out.println("FAIL]");
+      this.swc.disconnect();
+      return;
+    }
+    
+    System.out.println("OK]");
     System.out.println();
-    System.out.print(PROMPT);
+    System.out.print(this.currentPrompt);
 
     while (this.keepRunning) {
       if (!this.mainLoop()) {
@@ -196,31 +262,32 @@ public class Browser extends Thread {
         } catch (InterruptedException ie) {
           // Ignored
         }
-      }else {
+      } else if (this.keepRunning) {
         System.out.println();
-        System.out.print(PROMPT);
+        System.out.print(this.currentPrompt);
       }
 
     }
 
     this.cwc.disconnect();
     this.swc.disconnect();
-    
-    System.out.println("Disconnect!");
+
+    System.out.println("--Disconnected--");
   }
-  
+
   /**
    * Checks if user input is available, interprets it, takes action, and returns
    * with {@code true}.
+   * 
    * @return {@code true} if a command was handled, else {@code false}.
    */
-  protected boolean mainLoop(){
-    
+  protected boolean mainLoop() {
+
     try {
-      if(System.in.available() > 0){
-        
+      if (System.in.available() > 0) {
+
         String line = this.userIn.readLine().trim();
-        
+
         this.handleCommand(line);
         return true;
       }
@@ -230,31 +297,76 @@ public class Browser extends Thread {
     }
     return false;
   }
-  
+
   /**
-   * Parses the command and if valid, takes an action; if invalid, prints an error message.
-   * @param command the user command
+   * Parses the command and if valid, takes an action; if invalid, prints an
+   * error message.
+   * 
+   * @param command
+   *          the user command
    */
-  protected void handleCommand(final String command){
-    if(CMD_EXIT.equalsIgnoreCase(command) || CMD_QUIT.equalsIgnoreCase(command)){
+  protected void handleCommand(final String command) {
+    if (CMD_EXIT.equalsIgnoreCase(command)
+        || CMD_QUIT.equalsIgnoreCase(command)) {
       this.shutdown();
-    }else if(CMD_HELP.equalsIgnoreCase(command)){
+    } else if (CMD_HELP.equalsIgnoreCase(command)) {
       this.getHelp();
+    } else if (command.startsWith(CMD_SEARCH)) {
+      this.performIdSearch(command);
+    } else {
+      System.out.println("Command not found \"" + command
+          + "\".\nType \"help\" for a list of commands.");
     }
   }
-  
+
   /**
-   * Terminates the application.  Performs any necessary clean-up before the connections
-   * are terminated.
+   * Terminates the application. Performs any necessary clean-up before the
+   * connections are terminated.
    */
-  protected void shutdown(){
+  protected void shutdown() {
     this.keepRunning = false;
   }
-  
+
   /**
    * Provides the user with command-based help.
    */
-  protected void getHelp(){
+  protected void getHelp() {
     System.out.println(HELP_MSG);
+  }
+
+  /**
+   * Searches for matching Identifier values given a regular expression
+   * 
+   * @param command
+   */
+  protected void performIdSearch(final String command) {
+    // Extract the regular expression from the command line
+    int startCmd = command.indexOf(CMD_SEARCH);
+    if (startCmd == -1 || command.length() <= (CMD_SEARCH.length() + 1)) {
+      System.out.println("Missing regular expression. Unable to search.");
+      return;
+    }
+    // Grab the string from the end of the command +1 (space)
+    String regex = command.substring(startCmd + CMD_SEARCH.length() + 1);
+    if (regex.startsWith("\"") && regex.endsWith("\"") && regex.length() > 1) {
+      regex = regex.substring(1, regex.length() - 1);
+    }
+
+    if(regex.length() == 0){
+      System.out.println("Empty regular expression. Unable to search.");
+      return;
+    }
+    
+    System.out.println("Searching Identifiers for \"" + regex + "\"...");
+    String[] matched = this.cwc.searchId(regex);
+    if (matched == null || matched.length == 0) {
+      System.out.println("[No results found.]");
+      return;
+    }
+
+    for (String id : matched) {
+      System.out.println("+ " + id);
+    }
+
   }
 }
