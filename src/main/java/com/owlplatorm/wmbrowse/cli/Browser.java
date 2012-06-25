@@ -19,8 +19,13 @@
 package com.owlplatorm.wmbrowse.cli;
 
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStreamReader;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,6 +35,8 @@ import com.owlplatform.worldmodel.client.ClientWorldConnection;
 import com.owlplatform.worldmodel.client.StepResponse;
 import com.owlplatform.worldmodel.client.WorldState;
 import com.owlplatform.worldmodel.solver.SolverWorldConnection;
+import com.owlplatform.worldmodel.solver.protocol.messages.AttributeAnnounceMessage.AttributeSpecification;
+import com.owlplatform.worldmodel.types.DataConverter;
 
 /**
  * The startup class.
@@ -106,14 +113,20 @@ public class Browser extends Thread {
   public static final String CMD_CREATE_ID = "create";
 
   /**
+   * Command to create or update an Attribute value in the world model.
+   */
+  public static final String CMD_UPDATE_ATTRIB = "update";
+
+  /**
    * Message to print that contains all commands and brief descriptions.
    */
   public static final String HELP_MSG = "Command - Usage\n"
       + "help - Print this information\n"
-      + "search ID_REGEX - Search for Identifiers using a regular expression\n"
-      + "status ID_REGEX - Current status for Identifiers using a regular expression\n"
-      + "history ID_REGEX - Entire history for Identifiers using a regular expression\n"
-      + "create ID - Create a new Identifier in the world model\n"
+      + "search ID_REGEX [ID_REGEX...] - Search for Identifiers using a regex\n"
+      + "status ID_REGEX [ID_REGEX...]- Current status for Identifiers using a regex\n"
+      + "history ID_REGEX [ID_REGEX...] - Entire history for Identifiers using a regex\n"
+      + "create ID [ID...]- Create a new Identifier in the world model\n"
+      + "update ID ATTR - Update an Identifier's Attribute in the world model\n"
       + "quit - Exit the application\n" + "exit - Exit the application";
 
   /**
@@ -196,6 +209,11 @@ public class Browser extends Thread {
   private final String hostString;
 
   /**
+   * Origin value to use when updating Attribute values.
+   */
+  private final String origin;
+
+  /**
    * The current prompt shown to the user.
    */
   private String currentPrompt = PROMPT;
@@ -228,6 +246,7 @@ public class Browser extends Thread {
     }
 
     this.hostString = wmHost;
+    this.origin = origin;
     this.currentPrompt = "[" + origin + "@" + this.hostString + "]" + PROMPT;
 
     this.userIn = new BufferedReader(new InputStreamReader(System.in));
@@ -363,6 +382,8 @@ public class Browser extends Thread {
       this.history(command);
     } else if (command.startsWith(CMD_CREATE_ID)) {
       this.createId(command);
+    } else if (command.startsWith(CMD_UPDATE_ATTRIB)) {
+      this.updateAttribute(command);
     } else {
       System.out.println("Command not found \"" + command
           + "\".\nType \"help\" for a list of commands.");
@@ -398,24 +419,22 @@ public class Browser extends Thread {
       return;
     }
 
-    if (regex.startsWith("\"") && regex.endsWith("\"") && regex.length() > 1) {
-      regex = regex.substring(1, regex.length() - 1);
-    }
-
-    if (regex == null) {
-      System.out.println("Empty regular expression. Unable to search.");
+    List<String> idList = extractComponents(regex);
+    if (idList == null || idList.isEmpty()) {
+      System.out.println("Empty Identifier. Unable to create.");
       return;
     }
+    for (String entry : idList) {
+      System.out.println("Searching Identifiers for \"" + entry + "\"...");
+      String[] matched = this.cwc.searchId(entry);
+      if (matched == null || matched.length == 0) {
+        System.out.println("[No results found.]");
+        return;
+      }
 
-    System.out.println("Searching Identifiers for \"" + regex + "\"...");
-    String[] matched = this.cwc.searchId(regex);
-    if (matched == null || matched.length == 0) {
-      System.out.println("[No results found.]");
-      return;
-    }
-
-    for (String id : matched) {
-      System.out.println("+ " + id);
+      for (String id : matched) {
+        System.out.println("+ " + id);
+      }
     }
 
   }
@@ -470,23 +489,31 @@ public class Browser extends Thread {
       return;
     }
 
-    System.out.println("Retrieving current status for \"" + idRegex + "\"...");
-    try {
-      WorldState state = this.cwc.getCurrentSnapshot(idRegex, ".*").get();
-      if (state == null) {
-        System.out.println("[No status available.]");
-        return;
-      }
-      this.printState(state);
-
-    } catch (Exception e) {
-      System.out
-          .println("Unable to retrieve current status. See the log for more details.");
-      log.error("Unable to retrieve current snapshot for \"" + idRegex + "\".",
-          e);
+    List<String> idList = extractComponents(idRegex);
+    if (idList == null || idList.isEmpty()) {
+      System.out.println("Empty Identifier. Unable to create.");
       return;
     }
 
+    for (String element : idList) {
+      System.out
+          .println("Retrieving current status for \"" + element + "\"...");
+      try {
+        WorldState state = this.cwc.getCurrentSnapshot(element, ".*").get();
+        if (state == null) {
+          System.out.println("[No status available.]");
+          return;
+        }
+        printState(state);
+
+      } catch (Exception e) {
+        System.out
+            .println("Unable to retrieve current status. See the log for more details.");
+        log.error("Unable to retrieve current snapshot for \"" + element
+            + "\".", e);
+        return;
+      }
+    }
   }
 
   /**
@@ -504,76 +531,97 @@ public class Browser extends Thread {
       return;
     }
 
-    System.out.println("Retrieving historic information for \"" + idRegex
-        + "\".\nThis may take some time..");
-    try {
-      StepResponse responses = this.cwc.getRangeRequest(idRegex, 0,
-          System.currentTimeMillis(), ".*");
+    List<String> idList = extractComponents(idRegex);
+    if (idList == null || idList.isEmpty()) {
+      System.out.println("Empty Identifier. Unable to create.");
+      return;
+    }
 
-      if (responses == null) {
-        System.out.println("[No history available.]");
-        return;
-      }
+    for (String element : idList) {
+      System.out.println("Retrieving historic information for \"" + element
+          + "\".\nThis may take some time..");
+      try {
+        StepResponse responses = this.cwc.getRangeRequest(element, 0,
+            System.currentTimeMillis(), ".*");
 
-      // Keep going while there is data OR the data is incomplete
-      while (responses.hasNext() || !responses.isComplete()) {
-        if (responses.isError()) {
-          System.out
-              .println("An error occurred. Please see the log for details.");
-          log.error("Error while retrieving range response.",
-              responses.getError());
+        if (responses == null) {
+          System.out.println("[No history available.]");
           return;
         }
-        /*
-         * Get the next available state. If complete, should return immediately,
-         * else may block until data arrives. Can throw an exception if
-         * something happens while waiting.
-         */
 
-        WorldState state = responses.next();
-        System.out.println("==========");
-        this.printState(state);
+        // Keep going while there is data OR the data is incomplete
+        while (responses.hasNext() || !responses.isComplete()) {
+          if (responses.isError()) {
+            System.out
+                .println("An error occurred. Please see the log for details.");
+            log.error("Error while retrieving range response for " + element
+                + ".", responses.getError());
+            return;
+          }
+          /*
+           * Get the next available state. If complete, should return
+           * immediately, else may block until data arrives. Can throw an
+           * exception if something happens while waiting.
+           */
+
+          WorldState state = responses.next();
+          System.out.println("==========");
+          printState(state);
+        }
+      } catch (Exception e) {
+        System.out
+            .println("Unable to some or all historic status information. See the log for more details.");
+        log.error("Unable to retrieve full history for \"" + element + "\".", e);
+        return;
       }
-    } catch (Exception e) {
-      System.out
-          .println("Unable to some or all historic status information. See the log for more details.");
-      log.error("Unable to retrieve full history for \"" + idRegex + "\".", e);
-      return;
     }
   }
- 
+
   /**
    * Creates a new Identifier value in the world model.
-   *  @param command
+   * 
+   * @param command
    *          the full command provided by the user.
    */
-  protected void createId(final String command){
+  protected void createId(final String command) {
     String identifier = removeCommand(CMD_CREATE_ID, command);
     if (identifier == null) {
-      System.out
-          .println("Empty Identifier. Unable to create.");
+      System.out.println("Empty Identifier. Unable to create.");
       return;
     }
-    
-    if(this.swc.createId(identifier)){
-      System.out.println("Create \"" + identifier + "\" command was sent.");
-      try {
-        this.printState(this.cwc.getSnapshot(identifier, 0, 0, "creation").get());
-      }catch(Exception e){
-        log.error("Unable to retrieve state after creating \"" + identifier + "\".",e);
+
+    List<String> idList = extractComponents(identifier);
+    if (idList == null || idList.isEmpty()) {
+      System.out.println("Empty Identifier. Unable to create.");
+      return;
+    }
+
+    for (String element : idList) {
+      if (this.swc.createId(element)) {
+        System.out.println("Create \"" + element + "\" command was sent.");
+        try {
+          printState(this.cwc.getSnapshot(element, 0, 0, "creation").get());
+        } catch (Exception e) {
+          log.error("Unable to retrieve state after creating \"" + element
+              + "\".", e);
+        }
+      } else {
+        System.out.println("Unable to create \"" + element
+            + "\" in the world model.");
       }
-    }else{
-      System.out.println("Unable to create \"" + identifier + "\" in the world model.");
     }
   }
-  
+
   /**
    * Prints a WorldState object to System.out.
-   * @param state the state to print.
+   * 
+   * @param state
+   *          the state to print.
    */
-  protected void printState(final WorldState state){
-    if(state == null){
+  protected static void printState(final WorldState state) {
+    if (state == null) {
       System.out.println("+ [NO DATA]");
+      return;
     }
     for (String id : state.getIdentifiers()) {
       System.out.println("+ " + id);
@@ -586,5 +634,167 @@ public class Browser extends Thread {
         System.out.println(" - " + a);
       }
     }
+  }
+
+  /**
+   * Updates an Identifier Attribute in the world model.
+   * 
+   * @param command
+   *          the full command provided by the user.
+   */
+  protected void updateAttribute(final String command) {
+    String idAndAttrib = removeCommand(CMD_UPDATE_ATTRIB, command);
+
+    if (idAndAttrib == null) {
+      System.out
+          .println("Empty regular expression. Unable to update attribute value.");
+      return;
+    }
+
+    List<String> components = extractComponents(idAndAttrib);
+    if (components.size() != 2) {
+      System.out
+          .println("Invalid number of arguments.  Cannot update attribute value.");
+      return;
+    }
+
+    String identifier = components.get(0);
+    String attribute = components.get(1);
+
+    int attempts = 0;
+    String line = null;
+    String[] supportedTypes = DataConverter.getSupportedTypes();
+    String typeName = null;
+    while (!DataConverter.hasConverterForAttribute(attribute) && attempts < 3) {
+      System.out.println("Unknown attribute type \"" + attribute
+          + "\".\nPlease select a data type:");
+      for (int i = 0; i < supportedTypes.length; ++i) {
+        System.out.println(i + ") " + supportedTypes[i]);
+      }
+      try {
+        line = this.userIn.readLine();
+        int index = Integer.parseInt(line);
+        if (index < 0 || index >= supportedTypes.length) {
+          throw new NumberFormatException("Selection is out of range.");
+        }
+        typeName = supportedTypes[index];
+        DataConverter.putConverter(attribute, typeName);
+      } catch (NumberFormatException nfe) {
+        System.out.println("Invalid selection: \"" + line
+            + "\". Please make another selection.");
+      } catch (IOException ioe) {
+        System.out.println("Unable to read your selection. Aborting.");
+        log.error("Unable to read data type selection.", ioe);
+        return;
+      }
+    }
+
+    if (!DataConverter.hasConverterForAttribute(attribute)) {
+      System.out.println("Your response was not recognized after 3 attempts.");
+      return;
+    }
+
+    System.out.println("Please enter a value for " + attribute
+        + " as a String:");
+    try {
+      line = this.userIn.readLine();
+    } catch (IOException e) {
+      System.out.println("Unable to read your data. Cannot update.");
+      log.error("Unable to read attribute data.", e);
+      return;
+    }
+
+    byte[] data = DataConverter.encode(attribute, line);
+
+    if (data == null) {
+      return;
+    }
+
+    boolean success = this.insertAttributeValue(identifier, attribute, data);
+    if (!success) {
+      System.out.println("Unable to update world model. Reason unknown.");
+      return;
+    }
+    
+    try {
+      printState(this.cwc.getSnapshot(identifier, 0, 0, attribute).get());
+    } catch (Exception e) {
+      log.error("Unable to retrieve state after updatng \"" +identifier +"/" + attribute 
+          + "\".", e);
+    }
+    return;
+  }
+
+  /**
+   * Updates an Identifier's Attribute in the world model.
+   * 
+   * @param identifier
+   *          the Identifier to update
+   * @param attribute
+   *          the Attribute to update
+   * @param data
+   *          the encoded form of the Attribute value
+   * @return {@code true} on successfully sending the message, else
+   *         {@code false}.
+   */
+  private boolean insertAttributeValue(final String identifier,
+      final String attribute, final byte[] data) {
+    
+    AttributeSpecification spec = new AttributeSpecification();
+    spec.setAttributeName(attribute);
+    spec.setIsOnDemand(false);
+    this.swc.addAttribute(spec);
+    
+    Attribute newAttr = new Attribute();
+    newAttr.setAttributeName(attribute);
+    newAttr.setCreationDate(System.currentTimeMillis());
+    newAttr.setData(data);
+    newAttr.setId(identifier);
+    newAttr.setOriginName(this.origin);
+
+    return this.swc.updateAttribute(newAttr);
+  }
+
+  /**
+   * <p>
+   * Extracts the components of a String. Separating based on spaces, quotes
+   * group words with spaces, but are removed.
+   * </p>
+   * 
+   * <p>
+   * Originally from Stack Overflow:<br />
+   * http://stackoverflow.com/questions/366202/regex-for-splitting-a-string-
+   * using-space-when-not-surrounded-by-single-or-double
+   * </p>
+   * <p>
+   * Original author:<br />
+   * <a href="http://stackoverflow.com/users/33358/jan-goyvaerts">Jan
+   * Goyvaerts</a>
+   * </p>
+   * 
+   * @param whole
+   *          the entire string to separate.
+   * @return the components of the whole, separated into individual Strings.
+   */
+  protected static List<String> extractComponents(final String whole) {
+    if (whole == null) {
+      return null;
+    }
+    List<String> matchList = new ArrayList<String>();
+    Pattern regex = Pattern.compile("[^\\s\"']+|\"([^\"]*)\"|'([^']*)'");
+    Matcher regexMatcher = regex.matcher(whole);
+    while (regexMatcher.find()) {
+      if (regexMatcher.group(1) != null) {
+        // Add double-quoted string without the quotes
+        matchList.add(regexMatcher.group(1));
+      } else if (regexMatcher.group(2) != null) {
+        // Add single-quoted string without the quotes
+        matchList.add(regexMatcher.group(2));
+      } else {
+        // Add unquoted word
+        matchList.add(regexMatcher.group());
+      }
+    }
+    return matchList;
   }
 }
