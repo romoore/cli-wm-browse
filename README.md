@@ -28,12 +28,12 @@ version 3, which can be downloaded for free at <http://maven.apache.org/>.
 To build the static JAR file output, the following command should be run
 from the project root (where the pom.xml file is located):
 
-   mvn clean install -U
+    mvn clean install -U
 
 If everything compiles correctly, then near the end of the Maven output,
 this line should appear:
 
-   [INFO] BUILD SUCCESS
+    [INFO] BUILD SUCCESS
 
 In this case, the JAR file will be located in the ``target'' subdirectory.
 If not, please visit the project website listed at the top of this
@@ -44,7 +44,7 @@ The browser can be run from the command line using the Java launcher (java
 or java.exe).  To run via the Java launcher directly, you only need to
 include the path to the Jar file:
 
-   java -jar path/to/cli-wm-browse-1.0.0-SNAPSHOT-jar-with-dependencies.jar
+    java -jar path/to/cli-wm-browse-1.0.0-SNAPSHOT-jar-with-dependencies.jar
 
 The browser requires two parameters: the World Model server hostname/IP
 address and the username/origin name.  The origin name should uniquely
@@ -53,11 +53,11 @@ non-standard port numbers are needed (not 7009/7010), they can be provided
 as 2 additional, optional parameters after the origin string.  The solver
 port is first, and the client port is second.
   
-   java -jar path/to/cli-wm-browse-1.0.0-SNAPSHOT-jar-with-dependencies.jar \
-     grail.mydomain.com myuser
-
+    java -jar path/to/cli-wm-browse-1.0.0-SNAPSHOT-jar-with-dependencies.jar \
+      grail.mydomain.com myuser
+ 
 Or to specify alternate ports:
   
-   java -jar path/to/cli-wm-browse-1.0.0-SNAPSHOT-jar-with-dependencies.jar \
-     grail.mydomain.com myuser 8123 8124
+    java -jar path/to/cli-wm-browse-1.0.0-SNAPSHOT-jar-with-dependencies.jar \
+      grail.mydomain.com myuser 8123 8124
 
