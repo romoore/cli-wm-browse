@@ -22,7 +22,9 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.Collection;
+import java.util.Date;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -69,7 +71,7 @@ public class Browser extends Thread {
       + VERSION
       + "\n"
       + "World Model command line tools for the Owl Platform.\n\n"
-      + "Copyright (C) 2012 Robert Moore and the Owl Platform\n"
+      + "Copyright (C) 2012 Robert Moore\n"
       + TITLE
       + " comes with ABSOLUTELY NO WARRANTY.\n"
       + "This is free software, and you are welcome to redistribute it\n"
@@ -118,6 +120,11 @@ public class Browser extends Thread {
   public static final String CMD_UPDATE_ATTRIB = "update";
 
   /**
+   * Command to expire an Identifier or a specific Attribute in the world model.
+   */
+  public static final String CMD_EXPIRE = "expire";
+
+  /**
    * Message to print that contains all commands and brief descriptions.
    */
   public static final String HELP_MSG = "Command - Usage\n"
@@ -127,6 +134,7 @@ public class Browser extends Thread {
       + "history ID_REGEX [ID_REGEX...] - Entire history for Identifiers using a regex\n"
       + "create ID [ID...]- Create a new Identifier in the world model\n"
       + "update ID ATTR - Update an Identifier's Attribute in the world model\n"
+      + "expire ID [ATTR] - Update an Identifier or a single Attribute in the world model\n"
       + "quit - Exit the application\n" + "exit - Exit the application";
 
   /**
@@ -384,6 +392,8 @@ public class Browser extends Thread {
       this.createId(command);
     } else if (command.startsWith(CMD_UPDATE_ATTRIB)) {
       this.updateAttribute(command);
+    } else if (command.startsWith(CMD_EXPIRE)) {
+      this.expire(command);
     } else {
       System.out.println("Command not found \"" + command
           + "\".\nType \"help\" for a list of commands.");
@@ -715,12 +725,12 @@ public class Browser extends Thread {
       System.out.println("Unable to update world model. Reason unknown.");
       return;
     }
-    
+
     try {
       printState(this.cwc.getSnapshot(identifier, 0, 0, attribute).get());
     } catch (Exception e) {
-      log.error("Unable to retrieve state after updatng \"" +identifier +"/" + attribute 
-          + "\".", e);
+      log.error("Unable to retrieve state after updatng \"" + identifier + "/"
+          + attribute + "\".", e);
     }
     return;
   }
@@ -739,12 +749,12 @@ public class Browser extends Thread {
    */
   private boolean insertAttributeValue(final String identifier,
       final String attribute, final byte[] data) {
-    
+
     AttributeSpecification spec = new AttributeSpecification();
     spec.setAttributeName(attribute);
     spec.setIsOnDemand(false);
     this.swc.addAttribute(spec);
-    
+
     Attribute newAttr = new Attribute();
     newAttr.setAttributeName(attribute);
     newAttr.setCreationDate(System.currentTimeMillis());
@@ -796,5 +806,132 @@ public class Browser extends Thread {
       }
     }
     return matchList;
+  }
+
+  /**
+   * Expires all or 1 of an Identifier's Attribute values.
+   * 
+   * @param command
+   *          the full command provided by the user.
+   */
+  protected void expire(final String command) {
+    String idAndAttrib = removeCommand(CMD_EXPIRE, command);
+
+    if (idAndAttrib == null) {
+      System.out.println("Empty regular expression. Unable to expire value.");
+      return;
+    }
+
+    List<String> components = extractComponents(idAndAttrib);
+    if (components.size() < 1) {
+      System.out.println("Invalid number of arguments.  Cannot expire value.");
+      return;
+    }
+
+    if (components.size() == 1) {
+      this.expireIdentifier(components.get(0));
+    } else {
+      this.expireAttribute(components.get(0), components.get(1));
+    }
+  }
+
+  /**
+   * Expires an Identifier after prompting for the expiration date.
+   * 
+   * @param identifier
+   *          the Identifier to expire.
+   */
+  protected void expireIdentifier(final String identifier) {
+    Date expireTime = getDate("expiration");
+    if (expireTime == null) {
+      System.out.println("Unable to determine expiration time.");
+      return;
+    }
+
+    if (!this.swc.expire(identifier, expireTime.getTime())) {
+      System.out.println("Unable to expire \"" + identifier
+          + "\" due to an unknown error.");
+    }
+  }
+
+  /**
+   * Expires the current value of a specific Identifier and Attribute in the
+   * world model after prompting for the expiration time.
+   * 
+   * @param identifier
+   *          the Identifier of the Attribute to expire.
+   * @param attribute
+   *          the Attribute name to expire.
+   */
+  protected void expireAttribute(final String identifier, final String attribute) {
+    Date expireTime = getDate("expiration");
+    if (expireTime == null) {
+      System.out.println("Unable to determine expiration time.");
+      return;
+    }
+
+    if (!this.swc.expire(identifier, expireTime.getTime(), attribute)) {
+      System.out.println("Unable to expire \"" + identifier + "\"/\""
+          + attribute + "\" due to an unknown error.");
+    }
+  }
+
+  /**
+   * Prompts the user for a date and time (in 24-hour format), returned as a
+   * {@code java.util.Date} object.
+   * 
+   * @param typeName
+   *          the type of date to ask the user for.
+   * @return a {@code Date} object based on the user input, or {@code null} if
+   *         the input was invalid or missing.
+   */
+  protected Date getDate(final String typeName) {
+    System.out.println("Please enter the " + typeName
+        + " date in the format YYYYMMDD: ");
+    String dateLine;
+    try {
+      dateLine = this.userIn.readLine();
+    } catch (IOException e) {
+      System.out
+          .println("An error has occurred.  Please see the log for details.");
+      log.error("Unable to read user input (date).", e);
+      return null;
+    }
+    if (dateLine.length() != 8) {
+      System.out.println("Invalid date format.");
+      return null;
+    }
+    int year = Integer.parseInt(dateLine.substring(0, 4));
+    int month = Integer.parseInt(dateLine.substring(4, 6));
+    int date = Integer.parseInt(dateLine.substring(6, 8));
+
+    System.out.println("Please enter the " + typeName
+        + " time in the 24-hour format hhmmss: ");
+    String timeLine = "";
+    try {
+      timeLine = this.userIn.readLine();
+    } catch (IOException e) {
+      System.out
+          .println("An error has occurred.  Please see the log for details.");
+      log.error("Unable to read user input (time).", e);
+      return null;
+    }
+    if (timeLine.length() != 6) {
+      System.out.println("Invalid time format.");
+      return null;
+    }
+
+    int hour = Integer.parseInt(timeLine.substring(0, 2));
+    int minute = Integer.parseInt(timeLine.substring(2, 4));
+    int second = Integer.parseInt(timeLine.substring(4, 6));
+
+    Calendar cal = Calendar.getInstance();
+    cal.set(Calendar.YEAR, year);
+    cal.set(Calendar.MONTH, month);
+    cal.set(Calendar.DAY_OF_MONTH, date);
+    cal.set(Calendar.HOUR_OF_DAY, hour);
+    cal.set(Calendar.MINUTE, minute);
+    cal.set(Calendar.SECOND, second);
+    return cal.getTime();
   }
 }
