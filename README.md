@@ -63,8 +63,8 @@ Or to specify alternate ports:
       grail.mydomain.com myuser 8123 8124
 
 ## Notes ##
-This utility makes use of [Jan Goyvaert]s' regular expression/Java code for
+This utility makes use of [Jan Goyvaerts]' regular expression/Java code for
 extracting quoted strings from a String variable.  The [Original Post] can be found here: 
 
 [Original Post]: http://stackoverflow.com/questions/366202/regex-for-splitting-a-string-using-space-when-not-surrounded-by-single-or-double
-[Jan Goyvaert]: http://stackoverflow.com/users/33358/jan-goyvaerts
+[Jan Goyvaerts]: http://stackoverflow.com/users/33358/jan-goyvaerts
