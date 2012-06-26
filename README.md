@@ -64,7 +64,8 @@ Or to specify alternate ports:
 
 ## Notes ##
 This utility makes use of [Jan Goyvaerts]' regular expression/Java code for
-extracting quoted strings from a String variable.  The [Original Post] can be found here: 
+extracting quoted strings from a String variable.  The [Original Post] was on
+StackOverflow.
 
 [Original Post]: http://stackoverflow.com/questions/366202/regex-for-splitting-a-string-using-space-when-not-surrounded-by-single-or-double
 [Jan Goyvaerts]: http://stackoverflow.com/users/33358/jan-goyvaerts
