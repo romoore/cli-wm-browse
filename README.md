@@ -1,5 +1,5 @@
-                        Owl Platform World Model Browser
-                       ==================================
+Owl Platform World Model Browser
+================================
 
 Version 1.0.0-BETA
 Last updated June 26, 2012
