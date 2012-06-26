@@ -123,6 +123,11 @@ public class Browser extends Thread {
    * Command to expire an Identifier or a specific Attribute in the world model.
    */
   public static final String CMD_EXPIRE = "expire";
+  
+  /**
+   * Command to delete an Identifier or a specific Attribute in the world model.
+   */
+  public static final String CMD_DELETE = "delete";
 
   /**
    * Message to print that contains all commands and brief descriptions.
@@ -134,7 +139,8 @@ public class Browser extends Thread {
       + "history ID_REGEX [ID_REGEX...] - Entire history for Identifiers using a regex\n"
       + "create ID [ID...]- Create a new Identifier in the world model\n"
       + "update ID ATTR - Update an Identifier's Attribute in the world model\n"
-      + "expire ID [ATTR] - Update an Identifier or a single Attribute in the world model\n"
+      + "expire ID [ATTR] - Expire an Identifier or a single Attribute in the world model\n"
+      + "delete ID [ATTR] - Delete an Identifier or a single Attribute in the world model\n"
       + "quit - Exit the application\n" + "exit - Exit the application";
 
   /**
@@ -394,6 +400,8 @@ public class Browser extends Thread {
       this.updateAttribute(command);
     } else if (command.startsWith(CMD_EXPIRE)) {
       this.expire(command);
+    } else if(command.startsWith(CMD_DELETE)){
+      this.delete(command);
     } else {
       System.out.println("Command not found \"" + command
           + "\".\nType \"help\" for a list of commands.");
@@ -809,7 +817,7 @@ public class Browser extends Thread {
   }
 
   /**
-   * Expires all or 1 of an Identifier's Attribute values.
+   * Expires all or just one of an Identifier's Attribute values.
    * 
    * @param command
    *          the full command provided by the user.
@@ -933,5 +941,54 @@ public class Browser extends Thread {
     cal.set(Calendar.MINUTE, minute);
     cal.set(Calendar.SECOND, second);
     return cal.getTime();
+  }
+ 
+  /**
+   * Deletes all or only one of an Identifier's Attribute values.
+   * 
+   * @param command
+   *          the full command provided by the user.
+   */
+  protected void delete(final String command) {
+    String idAndAttrib = removeCommand(CMD_DELETE, command);
+
+    if (idAndAttrib == null) {
+      System.out.println("Empty regular expression. Unable to delete value.");
+      return;
+    }
+
+    List<String> components = extractComponents(idAndAttrib);
+    if (components.size() < 1) {
+      System.out.println("Invalid number of arguments.  Cannot delete value.");
+      return;
+    }
+
+    if (components.size() == 1) {
+      this.deleteIdentifier(components.get(0));
+    } else {
+      this.deleteAttribute(components.get(0), components.get(1));
+    }
+  }
+  
+  /**
+   * Deletes an Identifier from the world model.
+   * @param identifier the Identifier to delete.
+   */
+  protected void deleteIdentifier(final String identifier){
+    if (!this.swc.delete(identifier)) {
+      System.out.println("Unable to delete \"" + identifier + "\" due to an unknown error.");
+    }
+  }
+  
+  /**
+   * Deletes an Attribute from an Identifier in the world model.
+   * @param identifier the Identifier for the Attribute
+   * @param attribute the Attribute name to delete
+   */
+  protected void deleteAttribute(final String identifier, final String attribute){
+    if (!this.swc.delete(identifier, attribute)) {
+      System.out.println("Unable to delete \"" + identifier + "\"/\""
+          + attribute + "\" due to an unknown error.");
+    }   
   }
 }
