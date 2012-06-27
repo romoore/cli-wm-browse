@@ -112,7 +112,7 @@ public class Browser extends Thread {
   /**
    * Command to create a new Identifier value in the world model.
    */
-  public static final String CMD_CREATE_ID = "create";
+  public static final String CMD_CREATE_ID = "touch";
 
   /**
    * Command to create or update an Attribute value in the world model.
@@ -123,11 +123,17 @@ public class Browser extends Thread {
    * Command to expire an Identifier or a specific Attribute in the world model.
    */
   public static final String CMD_EXPIRE = "expire";
-  
+
   /**
    * Command to delete an Identifier or a specific Attribute in the world model.
    */
-  public static final String CMD_DELETE = "delete";
+  public static final String CMD_DELETE = "rm";
+
+  /**
+   * Command to copy an Identifier's current state or its historic attribute
+   * values into a new Identifier value.
+   */
+  public static final String CMD_COPY = "cp";
 
   /**
    * Message to print that contains all commands and brief descriptions.
@@ -137,11 +143,13 @@ public class Browser extends Thread {
       + "search ID_REGEX [ID_REGEX...] - Search for Identifiers using a regex\n"
       + "status ID_REGEX [ID_REGEX...]- Current status for Identifiers using a regex\n"
       + "history ID_REGEX [ID_REGEX...] - Entire history for Identifiers using a regex\n"
-      + "create ID [ID...]- Create a new Identifier in the world model\n"
+      + "touch ID [ID...]- Create a new Identifier in the world model\n"
       + "update ID ATTR - Update an Identifier's Attribute in the world model\n"
       + "expire ID [ATTR] - Expire an Identifier or a single Attribute in the world model\n"
-      + "delete ID [ATTR] - Delete an Identifier or a single Attribute in the world model\n"
-      + "quit - Exit the application\n" + "exit - Exit the application";
+      + "rm ID [ATTR] - Delete an Identifier or a single Attribute in the world model\n"
+      + "cp [-r] SRC_ID DST_ID - Copy an Identifier's current or historic state to\n"
+      + "  a new Identifier value\n" + "quit - Exit the application\n"
+      + "exit - Exit the application";
 
   /**
    * Expects a server hostname/IP and origin value. Optionally provides the
@@ -400,8 +408,10 @@ public class Browser extends Thread {
       this.updateAttribute(command);
     } else if (command.startsWith(CMD_EXPIRE)) {
       this.expire(command);
-    } else if(command.startsWith(CMD_DELETE)){
+    } else if (command.startsWith(CMD_DELETE)) {
       this.delete(command);
+    } else if (command.startsWith(CMD_COPY)) {
+      this.copy(command);
     } else {
       System.out.println("Command not found \"" + command
           + "\".\nType \"help\" for a list of commands.");
@@ -439,7 +449,7 @@ public class Browser extends Thread {
 
     List<String> idList = extractComponents(regex);
     if (idList == null || idList.isEmpty()) {
-      System.out.println("Empty Identifier. Unable to create.");
+      System.out.println("Missing Identifier. Unable to create.");
       return;
     }
     for (String entry : idList) {
@@ -509,7 +519,7 @@ public class Browser extends Thread {
 
     List<String> idList = extractComponents(idRegex);
     if (idList == null || idList.isEmpty()) {
-      System.out.println("Empty Identifier. Unable to create.");
+      System.out.println("Missing Identifier. Unable to create.");
       return;
     }
 
@@ -551,7 +561,7 @@ public class Browser extends Thread {
 
     List<String> idList = extractComponents(idRegex);
     if (idList == null || idList.isEmpty()) {
-      System.out.println("Empty Identifier. Unable to create.");
+      System.out.println("Missing Identifier. Unable to create.");
       return;
     }
 
@@ -604,13 +614,13 @@ public class Browser extends Thread {
   protected void createId(final String command) {
     String identifier = removeCommand(CMD_CREATE_ID, command);
     if (identifier == null) {
-      System.out.println("Empty Identifier. Unable to create.");
+      System.out.println("Missing Identifier. Unable to create.");
       return;
     }
 
     List<String> idList = extractComponents(identifier);
     if (idList == null || idList.isEmpty()) {
-      System.out.println("Empty Identifier. Unable to create.");
+      System.out.println("Missing Identifier. Unable to create.");
       return;
     }
 
@@ -665,7 +675,7 @@ public class Browser extends Thread {
 
     if (idAndAttrib == null) {
       System.out
-          .println("Empty regular expression. Unable to update attribute value.");
+          .println("Missing Identifier. Unable to update attribute value.");
       return;
     }
 
@@ -826,7 +836,7 @@ public class Browser extends Thread {
     String idAndAttrib = removeCommand(CMD_EXPIRE, command);
 
     if (idAndAttrib == null) {
-      System.out.println("Empty regular expression. Unable to expire value.");
+      System.out.println("Missing Identifier. Unable to expire.");
       return;
     }
 
@@ -942,7 +952,7 @@ public class Browser extends Thread {
     cal.set(Calendar.SECOND, second);
     return cal.getTime();
   }
- 
+
   /**
    * Deletes all or only one of an Identifier's Attribute values.
    * 
@@ -953,7 +963,7 @@ public class Browser extends Thread {
     String idAndAttrib = removeCommand(CMD_DELETE, command);
 
     if (idAndAttrib == null) {
-      System.out.println("Empty regular expression. Unable to delete value.");
+      System.out.println("Missing Identifier. Unable to delete.");
       return;
     }
 
@@ -969,26 +979,183 @@ public class Browser extends Thread {
       this.deleteAttribute(components.get(0), components.get(1));
     }
   }
-  
+
   /**
    * Deletes an Identifier from the world model.
-   * @param identifier the Identifier to delete.
+   * 
+   * @param identifier
+   *          the Identifier to delete.
    */
-  protected void deleteIdentifier(final String identifier){
+  protected void deleteIdentifier(final String identifier) {
     if (!this.swc.delete(identifier)) {
-      System.out.println("Unable to delete \"" + identifier + "\" due to an unknown error.");
+      System.out.println("Unable to delete \"" + identifier
+          + "\" due to an unknown error.");
     }
   }
-  
+
   /**
    * Deletes an Attribute from an Identifier in the world model.
-   * @param identifier the Identifier for the Attribute
-   * @param attribute the Attribute name to delete
+   * 
+   * @param identifier
+   *          the Identifier for the Attribute
+   * @param attribute
+   *          the Attribute name to delete
    */
-  protected void deleteAttribute(final String identifier, final String attribute){
+  protected void deleteAttribute(final String identifier, final String attribute) {
     if (!this.swc.delete(identifier, attribute)) {
       System.out.println("Unable to delete \"" + identifier + "\"/\""
           + attribute + "\" due to an unknown error.");
-    }   
+    }
+  }
+
+  /**
+   * Copies the state from one Identifier to another. If the "-r" (recursive)
+   * flag is provided, it copies the entire history of Attribute values.
+   * 
+   * @param command
+   *          the full command provided by the user
+   */
+  protected void copy(final String command) {
+    String flagAndIds = removeCommand(CMD_COPY, command);
+
+    if (flagAndIds == null) {
+      System.out.println("Missing Identifier. Unable to copy state.");
+      return;
+    }
+    boolean withHistory = false;
+    if (flagAndIds.contains("-r")) {
+      flagAndIds = removeCommand("-r", flagAndIds);
+      withHistory = true;
+    }
+
+    if (flagAndIds == null) {
+      System.out.println("Missing Identifier. Unable to copy state.");
+      return;
+    }
+
+    List<String> parts = extractComponents(flagAndIds);
+
+    if (parts == null || parts.size() != 2) {
+      System.out
+          .println("Source or destination Identifier is missing. Unable to copy.");
+      return;
+    }
+
+    if (withHistory) {
+      this.recursiveCopy(parts.get(0), parts.get(1));
+    } else {
+      this.shallowCopy(parts.get(0), parts.get(1));
+    }
+  }
+
+  /**
+   * Performs a copy of the entire historical state from the source Identifier
+   * to destination.
+   * 
+   * @param source
+   *          the Identifier to copy from.
+   * @param destination
+   *          the Identifier to copy to.
+   */
+  protected void recursiveCopy(final String source, final String destination) {
+    WorldState origState = null;
+    StepResponse resp = null;
+
+    resp = this.cwc.getRangeRequest(source, 0, Long.MAX_VALUE, ".*");
+    int totalCopies = 0;
+    try {
+      while (!resp.isComplete() && !resp.isError()) {
+
+        origState = resp.next();
+        if (origState == null) {
+          System.out.println("The source is empty.");
+          break;
+        }
+        int numCopies = this.copyAttributes(origState.getState(source), destination);
+        if(numCopies < 0){
+          System.out.println("Error while copying one or more Attributes. Aborting.");
+          break;
+        }
+        totalCopies += numCopies;
+      }
+    } catch (Exception e) {
+      System.out
+          .println("Unable to read from source.  See the log for details.");
+      log.error("Unable to retrieve state for \"" + source + "\".", e);
+      return;
+    }
+    System.out.println("Copied " + totalCopies + " Attributes.");
+  }
+
+  /**
+   * Performs a copy of the current state from the source Identifier to
+   * destination.
+   * 
+   * @param source
+   *          the Identifier to copy from.
+   * @param destination
+   *          the Identifier to copy to.
+   */
+  protected void shallowCopy(final String source, final String destination) {
+
+    WorldState origState = null;
+    try {
+      origState = this.cwc.getCurrentSnapshot(source, ".*").get();
+    } catch (Exception e) {
+      System.out
+          .println("Unable to read from source.  See the log for details.");
+      log.error("Unable to retrieve current state for \"" + source + "\".", e);
+      return;
+    }
+    if (origState == null) {
+      System.out.println("The source is empty.");
+      return;
+    }
+    int numAttr = this.copyAttributes(origState.getState(source), destination);
+    if(numAttr >= 0){
+      System.out.println("Copied " + numAttr + " attributes.");
+    }
+    else{
+      System.out.println("An error has occurred. One or more Attributes was not copied.");
+    }
+  }
+
+  /**
+   * Copies a collection of Attribute values to a destination Identifier.
+   * 
+   * @param attributes
+   *          the Attributes to copy.
+   * @param destination
+   *          the destination Identifier.
+   * @return {@code true} if all Attributes were copied successfully, else
+   *         {@code false}.
+   */
+  protected int copyAttributes(final Collection<Attribute> attributes,
+      final String destination) {
+    String currOrigin = this.origin;
+    boolean success = true;
+    int numAttr = 0;
+    for (Attribute attr : attributes) {
+      attr.setId(destination);
+      AttributeSpecification spec = new AttributeSpecification();
+      spec.setAttributeName(attr.getAttributeName());
+      spec.setIsOnDemand(false);
+      this.swc.addAttribute(spec);
+      if (!attr.getOriginName().equals(currOrigin)) {
+        currOrigin = attr.getOriginName();
+        this.swc.setOriginString(currOrigin);
+      }
+      success = success && this.swc.updateAttribute(attr);
+      if (!success) {
+        System.out.println("Unable to copy " + attr + ".");
+        break;
+      }
+      ++numAttr;
+    }
+    this.swc.setOriginString(this.origin);
+    if(success){
+      return numAttr;
+    }
+    return -1;
   }
 }
