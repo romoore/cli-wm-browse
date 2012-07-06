@@ -278,7 +278,7 @@ public class Browser extends Thread {
   public void run() {
 
     // Client connection
-    System.out.print("[Connecting to " + this.cwc + ".");
+    System.out.print("[Connecting to " + this.cwc + "...");
     if (!this.cwc.connect(10000)) {
       System.out.println("FAIL]");
       return;
@@ -301,7 +301,7 @@ public class Browser extends Thread {
 
     // Solver connection
 
-    System.out.print("[Connecting to " + this.swc + ".");
+    System.out.print("[Connecting to " + this.swc + "...");
     if (!this.swc.connect(10000)) {
       System.out.println("FAIL]");
       return;
