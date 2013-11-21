@@ -975,8 +975,10 @@ public class Browser extends Thread {
 
     if (components.size() == 1) {
       this.deleteIdentifier(components.get(0));
+      System.out.println("Deleted identifier \"" + components.get(0) + "\".");
     } else {
       this.deleteAttribute(components.get(0), components.get(1));
+      System.out.println("Deleted attribute \"" + components.get(1) + "\" for \"" + components.get(0) + "\".");
     }
   }
 
