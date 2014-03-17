@@ -125,7 +125,7 @@
 					<archive>
 						<manifest>
 							<addClasspath>true</addClasspath>
-							<mainClass>com.owlplatorm.wmbrowse.cli.Browser</mainClass>
+							<mainClass>com.owlplatform.wmbrowse.cli.Browser</mainClass>
 						</manifest>
 					</archive>
 				</configuration>
@@ -140,7 +140,7 @@
 					</descriptorRefs>
 					<archive>
 						<manifest>
-							<mainClass>com.owlplatorm.wmbrowse.cli.Browser</mainClass>
+							<mainClass>com.owlplatform.wmbrowse.cli.Browser</mainClass>
 						</manifest>
 					</archive>
 				</configuration>
@@ -178,7 +178,7 @@
 		<dependency>
 			<groupId>com.owlplatform</groupId>
 			<artifactId>owl-worldmodel</artifactId>
-			<version>1.0.1</version>
+			<version>1.0.4</version>
 			<type>jar</type>
 		</dependency>
 	</dependencies>
