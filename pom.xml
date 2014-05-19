@@ -160,7 +160,7 @@
      <dependency>
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-log4j12</artifactId>
-      <version>1.6.1</version>
+      <version>1.7.5</version>
       <type>jar</type>
     </dependency>
     <dependency>
@@ -178,7 +178,7 @@
 		<dependency>
 			<groupId>com.owlplatform</groupId>
 			<artifactId>owl-worldmodel</artifactId>
-			<version>1.0.4</version>
+			<version>1.0.5</version>
 			<type>jar</type>
 		</dependency>
 	</dependencies>
